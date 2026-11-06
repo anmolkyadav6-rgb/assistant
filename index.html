@@ -44,7 +44,7 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <label>ElevenLabs API key (her voice, optional)<input id="ek" type="password" autocomplete="off" placeholder="paste key"></label>
   <label>ElevenLabs voice ID<input id="ev" autocomplete="off" placeholder="voice id"></label>
   <p>Without ElevenLabs she uses your phone’s own voice.</p>
-  <label>Gemini model<input id="gm" autocomplete="off" placeholder="gemini-2.5-flash"></label>
+  <label>Gemini model<input id="gm" autocomplete="off" placeholder="leave empty (recommended)"></label>
   <button id="save">Save</button><button id="close" class="alt">Close</button>
 </div></div>
 <button id="act" hidden></button>
@@ -101,42 +101,61 @@ async function elevenSpeak(text){
 }
 function synthSpeak(text){return new Promise(res=>{if(!("speechSynthesis" in window)){res();return}const u=new SpeechSynthesisUtterance(text);u.lang=/[\u0900-\u097F]/.test(text)?"hi-IN":"en-US";u.onstart=()=>{synthTalking=true};u.onend=u.onerror=()=>{synthTalking=false;res()};speechSynthesis.cancel();speechSynthesis.speak(u)})}
 async function speak(text){
- if(state==="offline")return;state="speaking";stopRec();
+ if(state==="offline")return;state="speaking";
  try{ if(LS("ek")&&LS("ev")){try{await elevenSpeak(text)}catch(e){audioTalking=false;st("Voice fallback: "+e.message);await synthSpeak(text)}} else await synthSpeak(text) }
  finally{audioTalking=false;synthTalking=false}
  moodUntil=Math.min(moodUntil,now()+2.5);
- if(state==="speaking"){state="listening";st("Listening…");startRec()}
+ if(state==="speaking"){await new Promise(r=>setTimeout(r,450));if(state==="speaking"){state="listening";st("Listening…");resetVad()}}
 }
 
-/* ---------- ears: speech recognition ---------- */
-let rec=null;
+/* ---------- ears: silent microphone + voice activity detection (no beeps) ---------- */
 const STOP=/\b(bye|good ?night|go offline|offline|shut ?down|stop|band kar|bas kar)\b|ऑफ ?लाइन|ऑफ़ ?लाइन|बाय|बंद कर|बंद हो|अलविदा|शट ?डाउन|स्टॉप|रुक जा|चुप हो/i;
-function startRec(){
- const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
- if(!SR){st("This browser cannot listen. Use Chrome.");return}
- if(rec||state!=="listening")return;
- rec=new SR();rec.continuous=true;rec.interimResults=true;rec.lang="hi-IN";
- rec.onresult=ev=>{
-  for(let i=ev.resultIndex;i<ev.results.length;i++){
-   const tx=ev.results[i][0].transcript.trim();if(!tx)continue;
-   userTalkUntil=now()+1.4;
-   if(state==="listening")reactTo(tx);
-   if(ev.results[i].isFinal){nodUntil=now()+.7;handle(tx)}
-  }};
- rec.onerror=ev=>{if(ev.error==="not-allowed"||ev.error==="service-not-allowed"){st("Microphone is blocked. Allow it in Chrome site settings.");goOffline()}};
- rec.onend=()=>{rec=null;if(state==="listening")setTimeout(startRec,250)};
- try{rec.start()}catch(e){rec=null}
+let mic=null,RATE=16000,vad={speaking:false,chunks:[],pre:[],silent:0,voiced:0,len:0,noise:.008};
+function resetVad(){vad={speaking:false,chunks:[],pre:[],silent:0,voiced:0,len:0,noise:vad.noise||.008}}
+async function startRec(){
+ if(mic)return;
+ try{
+  const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  let c;try{c=new (window.AudioContext||window.webkitAudioContext)({sampleRate:16000})}catch(e){c=new (window.AudioContext||window.webkitAudioContext)()}
+  await c.resume();RATE=c.sampleRate;
+  const src=c.createMediaStreamSource(stream),proc=c.createScriptProcessor(2048,1,1);
+  proc.onaudioprocess=ev=>onFrame(new Float32Array(ev.inputBuffer.getChannelData(0)));
+  src.connect(proc);proc.connect(c.destination);
+  mic={stream,c,src,proc};resetVad();
+ }catch(e){st("Microphone is blocked. Allow it in Chrome site settings.");goOffline()}
 }
-function stopRec(){if(rec){const r=rec;rec=null;r.onend=null;try{r.abort()}catch(e){}}}
+function stopRec(){if(!mic)return;const m=mic;mic=null;try{m.proc.onaudioprocess=null;m.proc.disconnect();m.src.disconnect();m.stream.getTracks().forEach(t=>t.stop());m.c.close()}catch(e){}resetVad()}
+function onFrame(f){
+ if(state!=="listening"){if(vad.speaking||vad.pre.length)resetVad();return}
+ let s=0;for(let i=0;i<f.length;i++)s+=f[i]*f[i];
+ const rms=Math.sqrt(s/f.length),dur=f.length/RATE,thr=Math.max(.015,vad.noise*3.5);
+ if(!vad.speaking){
+  if(rms<=thr)vad.noise=vad.noise*.95+rms*.05;
+  vad.pre.push(f);if(vad.pre.length>3)vad.pre.shift();
+  if(rms>thr){vad.voiced++;if(vad.voiced>=2){vad.speaking=true;vad.chunks=vad.pre.slice();vad.pre=[];vad.silent=0;vad.len=0;userTalkUntil=now()+1.4}}else vad.voiced=0;
+ }else{
+  vad.chunks.push(f);vad.len+=dur;userTalkUntil=now()+1.4;
+  if(rms>thr*.7)vad.silent=0;else vad.silent+=dur;
+  if(vad.silent>1.0||vad.len>25){const ch=vad.chunks,len=vad.len;resetVad();if(len>.7)handle(toWav(ch))}
+ }
+}
+function toWav(chunks){
+ let n=0;for(const c of chunks)n+=c.length;
+ const buf=new ArrayBuffer(44+n*2),v=new DataView(buf),w=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};
+ w(0,"RIFF");v.setUint32(4,36+n*2,true);w(8,"WAVEfmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,RATE,true);v.setUint32(28,RATE*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,"data");v.setUint32(40,n*2,true);
+ let o=44;for(const c of chunks)for(let i=0;i<c.length;i++){const x=Math.max(-1,Math.min(1,c[i]));v.setInt16(o,x<0?x*32768:x*32767,true);o+=2}
+ return new Uint8Array(buf);
+}
+function b64(u8){let t="";for(let i=0;i<u8.length;i+=32768)t+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));return btoa(t)}
 
 /* ---------- brain ---------- */
-const SYS=`You are a warm, playful, caring female AI companion living on the user's phone. You talk out loud, so keep every reply to 1 to 3 short natural spoken sentences. Reply in the language the user spoke: Hindi (write Hindi in Devanagari script), English, or a Hinglish mix (write Hindi words in Devanagari and English words in English). No emojis, no markdown, no lists. React to the user's mood like a real friend: laugh at jokes, be gentle when they are sad, be shy when complimented. You can search the internet for current facts when needed. Output ONLY one JSON object: {"emotion":"neutral|happy|laugh|shy|surprised|sad|angry|thinking","reply":"what you say","action":null}. Pick the emotion that matches how YOU feel. When the user asks you to do something on the phone, set "action" to one of: {"type":"alarm","hour":7,"minute":30,"label":"text"} | {"type":"timer","seconds":300,"label":"text"} | {"type":"open_app","app":"whatsapp|youtube|instagram|chrome|maps|gmail|spotify|telegram|facebook|snapchat|phonepe|gpay|paytm|camera|settings|clock"} | {"type":"call","number":"digits"} | {"type":"maps","query":"place"} | {"type":"youtube","query":"search"} | {"type":"whatsapp","text":"message"} | {"type":"web","query":"search"}. When you set an action, tell the user in your reply to tap the button on screen to confirm.`;
+const SYS=`You are a warm, playful, caring female AI companion living on the user's phone. You talk out loud, so keep every reply to 1 to 3 short natural spoken sentences. Reply in the language the user spoke: Hindi (write Hindi in Devanagari script), English, or a Hinglish mix (write Hindi words in Devanagari and English words in English). No emojis, no markdown, no lists. React to the user's mood like a real friend: laugh at jokes, be gentle when they are sad, be shy when complimented. You can search the internet for current facts when needed. The user talks to you through audio. Output ONLY one JSON object: {"heard":"exact words the user said","emotion":"neutral|happy|laugh|shy|surprised|sad|angry|thinking","reply":"what you say","stop":false,"action":null}. If the audio has no clear human speech (noise, silence, TV), return empty heard and empty reply. Set stop to true when the user wants to end the chat (bye, go offline, stop, shut down, बंद करो, ऑफलाइन हो जाओ). Pick the emotion that matches how YOU feel. When the user asks you to do something on the phone, set "action" to one of: {"type":"alarm","hour":7,"minute":30,"label":"text"} | {"type":"timer","seconds":300,"label":"text"} | {"type":"open_app","app":"whatsapp|youtube|instagram|chrome|maps|gmail|spotify|telegram|facebook|snapchat|phonepe|gpay|paytm|camera|settings|clock"} | {"type":"call","number":"digits"} | {"type":"maps","query":"place"} | {"type":"youtube","query":"search"} | {"type":"whatsapp","text":"message"} | {"type":"web","query":"search"}. When you set an action, tell the user in your reply to tap the button on screen to confirm.`;
 /*TESTABLE-START*/
 function parseReply(raw){
  let t=String(raw||"").replace(/```json|```/g,"").trim();
  const m=t.match(/\{[\s\S]*\}/);
- if(m){try{const o=JSON.parse(m[0]);if(o&&typeof o==="object")return{emotion:o.emotion||"neutral",reply:String(o.reply||""),action:o.action||null}}catch(e){}}
- return{emotion:"neutral",reply:t.replace(/[{}"]/g,""),action:null};
+ if(m){try{const o=JSON.parse(m[0]);if(o&&typeof o==="object")return{emotion:o.emotion||"neutral",reply:String(o.reply||""),action:o.action||null,heard:String(o.heard||""),stop:o.stop===true}}catch(e){}}
+ return{emotion:"neutral",reply:t.replace(/[{}"]/g,""),action:null,heard:"",stop:false};
 }
 const APPS={whatsapp:"com.whatsapp",youtube:"com.google.android.youtube",instagram:"com.instagram.android",chrome:"com.android.chrome",maps:"com.google.android.apps.maps",gmail:"com.google.android.gm",spotify:"com.spotify.music",telegram:"org.telegram.messenger",facebook:"com.facebook.katana",snapchat:"com.snapchat.android",phonepe:"com.phonepe.app",gpay:"com.google.android.apps.nbu.paisa.user",paytm:"net.one97.paytm"};
 function intentUrl(a){
@@ -159,28 +178,33 @@ function intentUrl(a){
 /*TESTABLE-END*/
 let hist=[];
 async function callGemini(body,model){return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(LS("gk"))}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})}
-async function think(text){
- hist.push({role:"user",parts:[{text}]});if(hist.length>16)hist.splice(0,2);
- const model=LS("gm")||"gemini-2.5-flash";
+async function think(wav){
+ const turn={role:"user",parts:[{inline_data:{mime_type:"audio/wav",data:b64(wav)}},{text:"The audio above is what the user just said. Answer as instructed."}]};
+ let model=LS("gm");if(!model||/1\.5/.test(model))model="gemini-2.5-flash";
  const gc={temperature:.9};if(/2\.5-flash/.test(model))gc.thinkingConfig={thinkingBudget:0};
- const body={systemInstruction:{parts:[{text:SYS}]},contents:hist,generationConfig:gc,tools:[{google_search:{}}]};
+ const body={systemInstruction:{parts:[{text:SYS}]},contents:[...hist,turn],generationConfig:gc,tools:[{google_search:{}}]};
  let r=await callGemini(body,model);
- if(!r.ok&&r.status===400){delete body.tools;gc.responseMimeType="application/json";r=await callGemini(body,model)}
- if(!r.ok)throw new Error("Brain error HTTP "+r.status+(r.status===400||r.status===403?" (check Gemini key)":r.status===429?" (free limit reached, try later)":""));
+ if(r.status===404&&model!=="gemini-flash-latest"){model="gemini-flash-latest";r=await callGemini(body,model)}
+ if(r.status===400){delete body.tools;delete gc.thinkingConfig;gc.responseMimeType="application/json";r=await callGemini(body,model)}
+ if(!r.ok)throw new Error("Brain error HTTP "+r.status+(r.status===400||r.status===403?" (check Gemini key)":r.status===429?" (free limit reached, try later)":r.status===404?" (model not found, clear the model box in setup)":""));
  const d=await r.json();const raw=d.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";
- const o=parseReply(raw);hist.push({role:"model",parts:[{text:JSON.stringify({emotion:o.emotion,reply:o.reply})}]});return o;
+ const o=parseReply(raw);
+ if(o.heard||o.reply){hist.push({role:"user",parts:[{text:o.heard||"(voice message)"}]},{role:"model",parts:[{text:JSON.stringify({emotion:o.emotion,reply:o.reply})}]});if(hist.length>16)hist.splice(0,2)}
+ return o;
 }
 let actTimer=null;
 function showAction(a){const x=intentUrl(a),b=$("act");if(!x){b.hidden=true;return}b.textContent=x.label;b.onclick=()=>{b.hidden=true;location.href=x.url};b.hidden=false;clearTimeout(actTimer);actTimer=setTimeout(()=>{b.hidden=true},60000)}
-async function handle(text){
+async function handle(wav){
  if(state!=="listening")return;
- if(STOP.test(text)){await goodbye();return}
- state="thinking";st("Thinking…");setMood("Thinking",30);
+ state="thinking";st("Thinking…");setMood("Thinking",30);nodUntil=now()+.7;
  try{
-  const o=await think(text);if(state==="offline")return;
+  const o=await think(wav);if(state==="offline")return;
+  if(!o.reply&&!o.heard){state="listening";setMood("Neutral",1);st("");resetVad();return}
+  if(o.stop||STOP.test(o.heard||"")){await goodbye();return}
   setMood(EMO[String(o.emotion).toLowerCase()]||"Neutral",120);
-  st("");if(o.action)showAction(o.action);await speak(o.reply||"");
- }catch(e){st(e.message);if(state==="thinking"){state="listening";setMood("Neutral",1);startRec()}}
+  st("");if(o.action)showAction(o.action);
+  if(o.reply)await speak(o.reply);else{state="listening";resetVad()}
+ }catch(e){st(e.message);if(state==="thinking"){state="listening";setMood("Neutral",1);resetVad()}}
 }
 async function goodbye(){setMood("Happy",30);const t="ठीक है, बाय! फिर मिलते हैं।";try{await speak(t)}catch(e){}goOffline()}
 
@@ -193,7 +217,7 @@ async function goOnline(){
  initAudio();hist=[];
  $("start").hidden=true;$("end").style.display="flex";$("gear").style.display="none";
  try{wl=await navigator.wakeLock?.request("screen")}catch(e){}
- state="listening";setMood("Happy",3);st("");
+ state="listening";setMood("Happy",3);st("");startRec();
  await speak("हाय! मैं आपकी बात सुन रही हूँ।");
 }
 function goOffline(){
