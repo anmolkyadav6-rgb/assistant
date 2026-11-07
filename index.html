@@ -71,13 +71,13 @@ const BASE={ParamEyeLOpen:1,ParamEyeROpen:1,ParamEyeLSmile:0,ParamEyeRSmile:0,Pa
 const sn=Math.sin;
 const MOODS={
  Neutral:{p:{},m:t=>({})},
- Happy:{p:{ParamEyeLSmile:1,ParamEyeRSmile:1,ParamMouthForm:1,ParamCheek:.5,ParamBrowLY:.3,ParamBrowRY:.3},m:t=>({az:sn(t*2.2)*4,bz:sn(t*2.2)*3,by:sn(t*4.4)*1.5,ay:3})},
- Laugh:{p:{ParamEyeLSmile:1,ParamEyeRSmile:1,ParamMouthForm:1,ParamCheek:.7,ParamBrowLY:.4,ParamBrowRY:.4},m:t=>({az:sn(t*8)*5,bz:sn(t*9)*5,by:sn(t*9)*3,ay:4,mo:.45+.3*sn(t*12)})},
- Shy:{p:{ParamCheek:1,ParamMouthForm:.4,ParamEyeBallY:-.6,ParamEyeBallX:.5,ParamEyeLOpen:.8,ParamEyeROpen:.8},m:t=>({ax:10,ay:-8,az:6,bx:6,bz:4})},
- Surprised:{p:{ParamBrowLY:1,ParamBrowRY:1,ParamEyeBallY:.2},m:t=>({ay:8,by:6,mo:.5})},
- Sad:{p:{ParamMouthForm:-1,ParamBrowLAngle:-.7,ParamBrowRAngle:-.7,ParamBrowLY:-.2,ParamBrowRY:-.2,ParamEyeLOpen:.75,ParamEyeROpen:.75},m:t=>({ay:-10,by:-6,az:-4,bz:sn(t*.8)})},
- Angry:{p:{ParamBrowLForm:-1,ParamBrowRForm:-1,ParamBrowLAngle:.8,ParamBrowRAngle:.8,ParamBrowLY:-.4,ParamBrowRY:-.4,ParamMouthForm:-.6,ParamEyeLOpen:.85,ParamEyeROpen:.85},m:t=>({ay:-4,by:-3,bz:sn(t*14)*1.2})},
- Thinking:{p:{ParamEyeBallX:-.5,ParamEyeBallY:.5,ParamBrowLY:.2,ParamMouthForm:-.1},m:t=>({az:8,ax:-6,ay:4})}
+ Happy:{p:{ParamEyeLSmile:1,ParamEyeRSmile:1,ParamMouthForm:1,ParamCheek:.6,ParamBrowLY:.4,ParamBrowRY:.4},m:t=>({az:sn(t*2.4)*9,bz:sn(t*2.4)*5,by:sn(t*4.8)*3,ay:6,ax:sn(t*1.2)*5})},
+ Laugh:{p:{ParamEyeLSmile:1,ParamEyeRSmile:1,ParamMouthForm:1,ParamCheek:.8,ParamBrowLY:.5,ParamBrowRY:.5},m:t=>({az:sn(t*8)*10,bz:sn(t*9)*8,by:sn(t*9)*5,ay:8,ax:sn(t*4)*4,mo:.5+.35*sn(t*12)})},
+ Shy:{p:{ParamCheek:1,ParamMouthForm:.5,ParamEyeBallY:-.7,ParamEyeBallX:.6,ParamEyeLOpen:.75,ParamEyeROpen:.75,ParamBrowLY:.2,ParamBrowRY:.2},m:t=>({ax:20,ay:-14,az:12,bx:8,bz:6,by:-3})},
+ Surprised:{p:{ParamBrowLY:1,ParamBrowRY:1,ParamEyeBallY:.2,ParamMouthForm:.1},m:t=>({ay:14,by:8,mo:.55})},
+ Sad:{p:{ParamMouthForm:-1,ParamBrowLAngle:-.9,ParamBrowRAngle:-.9,ParamBrowLY:-.3,ParamBrowRY:-.3,ParamEyeLOpen:.65,ParamEyeROpen:.65,ParamEyeBallY:-.4},m:t=>({ay:-18,by:-8,az:-9,bz:sn(t*.8)*2,ax:-4})},
+ Angry:{p:{ParamBrowLForm:-1,ParamBrowRForm:-1,ParamBrowLAngle:1,ParamBrowRAngle:1,ParamBrowLY:-.6,ParamBrowRY:-.6,ParamMouthForm:-.8,ParamEyeLOpen:.8,ParamEyeROpen:.8},m:t=>({ay:-8,by:-5,bx:sn(t*20)*1.5,bz:sn(t*14)*2,az:sn(t*3)*3})},
+ Thinking:{p:{ParamEyeBallX:-.6,ParamEyeBallY:.6,ParamBrowLY:.3,ParamMouthForm:-.2},m:t=>({az:14,ax:-12,ay:8,bz:3})}
 };
 const EMO={neutral:"Neutral",happy:"Happy",laugh:"Laugh",shy:"Shy",surprised:"Surprised",sad:"Sad",angry:"Angry",thinking:"Thinking"};
 let mood="Neutral",moodUntil=0,state="offline",userTalkUntil=0,nodUntil=0,synthTalking=false,audioTalking=false;
@@ -111,13 +111,13 @@ async function elevenSpeak(text){
  await new Promise((res,rej)=>{aud.onended=res;aud.onerror=()=>rej(new Error("audio error"));audioTalking=true;aud.play().catch(rej)});
  audioTalking=false;URL.revokeObjectURL(url)
 }
-function synthSpeak(text){return new Promise(res=>{if(!("speechSynthesis" in window)){res();return}const u=new SpeechSynthesisUtterance(text);u.lang=/[\u0900-\u097F]/.test(text)?"hi-IN":"en-US";u.onstart=()=>{synthTalking=true};u.onend=u.onerror=()=>{synthTalking=false;res()};speechSynthesis.cancel();speechSynthesis.speak(u)})}
+function synthSpeak(text){return new Promise(res=>{if(!("speechSynthesis" in window)){res();return}synthTalking=true;const u=new SpeechSynthesisUtterance(text);u.lang=/[\u0900-\u097F]/.test(text)?"hi-IN":"en-US";u.onstart=()=>{synthTalking=true};u.onend=u.onerror=()=>{synthTalking=false;res()};speechSynthesis.cancel();speechSynthesis.speak(u)})}
 async function speak(text){
- if(state==="offline")return;state="speaking";
+ if(state==="offline")return;state="speaking";stopRec();
  try{ if(LS("ek")&&LS("ev")){try{await elevenSpeak(text)}catch(e){audioTalking=false;st("Voice fallback: "+e.message);await synthSpeak(text)}} else await synthSpeak(text) }
  finally{audioTalking=false;synthTalking=false}
  moodUntil=Math.min(moodUntil,now()+2.5);
- if(state==="speaking"){await new Promise(r=>setTimeout(r,450));if(state==="speaking"){state="listening";st("Listening…");resetVad()}}
+ if(state==="speaking"){await new Promise(r=>setTimeout(r,450));if(state==="speaking"){await startRec();if(state==="speaking"){state="listening";st("Listening…");resetVad()}}}
 }
 
 /* ---------- ears: silent microphone + voice activity detection (no beeps) ---------- */
@@ -161,7 +161,7 @@ function toWav(chunks){
 function b64(u8){let t="";for(let i=0;i<u8.length;i+=32768)t+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));return btoa(t)}
 
 /* ---------- brain ---------- */
-const SYS=`You are a warm, playful, caring female AI companion living on the user's phone. You talk out loud, so keep every reply to 1 to 3 short natural spoken sentences. Reply in the language the user spoke: Hindi (write Hindi in Devanagari script), English, or a Hinglish mix (write Hindi words in Devanagari and English words in English). No emojis, no markdown, no lists. React to the user's mood like a real friend: laugh at jokes, be gentle when they are sad, be shy when complimented. You can search the internet for current facts when needed. The user talks to you through audio. Output ONLY one JSON object: {"heard":"exact words the user said","emotion":"neutral|happy|laugh|shy|surprised|sad|angry|thinking","reply":"what you say","stop":false,"action":null}. If the audio has no clear human speech (noise, silence, TV), return empty heard and empty reply. Set stop to true when the user wants to end the chat (bye, go offline, stop, shut down, बंद करो, ऑफलाइन हो जाओ). Pick the emotion that matches how YOU feel. When the user asks you to do something on the phone, set "action" to one of: {"type":"alarm","hour":7,"minute":30,"label":"text"} | {"type":"timer","seconds":300,"label":"text"} | {"type":"open_app","app":"whatsapp|youtube|instagram|chrome|maps|gmail|spotify|telegram|facebook|snapchat|phonepe|gpay|paytm|camera|settings|clock"} | {"type":"call","number":"digits"} | {"type":"maps","query":"place"} | {"type":"youtube","query":"search"} | {"type":"whatsapp","text":"message"} | {"type":"web","query":"search"}. When you set an action, tell the user in your reply to tap the button on screen to confirm.`;
+const SYS=`You are a warm, playful, caring female AI companion living on the user's phone. You talk out loud, so keep every reply to 1 to 3 short natural spoken sentences. Reply in the language the user spoke: Hindi (write Hindi in Devanagari script), English, or a Hinglish mix (write Hindi words in Devanagari and English words in English). No emojis, no markdown, no lists. Be very expressive and change your emotion often; use neutral only for plain facts. React to the user's mood like a real friend: laugh at jokes, be gentle when they are sad, be shy when complimented. You can search the internet for current facts when needed. The user talks to you through audio. Output ONLY one JSON object: {"heard":"exact words the user said","emotion":"neutral|happy|laugh|shy|surprised|sad|angry|thinking","reply":"what you say","stop":false,"action":null}. If the audio has no clear human speech (noise, silence, TV), return empty heard and empty reply. Set stop to true when the user wants to end the chat (bye, go offline, stop, shut down, बंद करो, ऑफलाइन हो जाओ). Pick the emotion that matches how YOU feel. When the user asks you to do something on the phone, set "action" to one of: {"type":"alarm","hour":7,"minute":30,"label":"text"} | {"type":"timer","seconds":300,"label":"text"} | {"type":"open_app","app":"whatsapp|youtube|instagram|chrome|maps|gmail|spotify|telegram|facebook|snapchat|phonepe|gpay|paytm|camera|settings|clock"} | {"type":"call","number":"digits"} | {"type":"maps","query":"place"} | {"type":"youtube","query":"search"} | {"type":"whatsapp","text":"message"} | {"type":"web","query":"search"}. When you set an action, tell the user in your reply to tap the button on screen to confirm.`;
 /*TESTABLE-START*/
 function parseReply(raw){
  let t=String(raw||"").replace(/```json|```/g,"").trim();
@@ -262,7 +262,7 @@ async function goOnline(){
  initAudio();hist=[];
  $("start").hidden=true;$("end").style.display="flex";$("gear").style.display="none";
  try{wl=await navigator.wakeLock?.request("screen")}catch(e){}
- state="listening";setMood("Happy",3);st("");startRec();
+ state="listening";setMood("Happy",3);st("");
  await speak("हाय! मैं आपकी बात सुन रही हूँ।");
 }
 function goOffline(){
@@ -306,19 +306,20 @@ $("save").onclick=()=>{["gk","qk","ek","ev","gm"].forEach(k=>localStorage.setIte
   im.on("beforeModelUpdate",()=>{
    const t=now(),dt=Math.min(.05,t-last);last=t;
    if(mood!=="Neutral"&&t>moodUntil)mood="Neutral";
+   const osc=.15+.55*Math.abs(sn(t*11)*sn(t*4.7));let talk=0;if(audioTalking)talk=Math.min(1,Math.max(osc*.7,level()*1.3));else if(synthTalking)talk=osc;
    const M=MOODS[mood]||MOODS.Neutral,tg=Object.assign({},BASE,M.p,M.m(t));
-   if(state==="listening"&&t<userTalkUntil&&mood==="Neutral"){tg.az=4;tg.ay=-2;tg.ParamBrowLY=.2;tg.ParamBrowRY=.2}
-   if(t<nodUntil)tg.ay+=sn((nodUntil-t)*14)*5;
+   if(talk>0){tg.ay+=talk*5;tg.az+=sn(t*2.6)*talk*6;tg.bx+=sn(t*1.7)*talk*3}
+   if(state==="listening"&&t<userTalkUntil&&mood==="Neutral"){tg.az=7;tg.ay=-4;tg.ParamBrowLY=.3;tg.ParamBrowRY=.3}
+   if(t<nodUntil)tg.ay+=sn((nodUntil-t)*14)*9;
    const k=Math.min(1,dt*6);for(const key in BASE)cur[key]+=(tg[key]-cur[key])*k;
    if(blinkT<0&&t>nextBlink){blinkT=0;nextBlink=t+2+Math.random()*3.5}
    let bl=0;if(blinkT>=0){blinkT+=dt;const p=blinkT/.18;bl=p<.5?p*2:Math.max(0,2-p*2);if(p>=1)blinkT=-1}
-   let talk=0;if(audioTalking)talk=level();else if(synthTalking)talk=.15+.55*Math.abs(sn(t*11)*sn(t*4.7));
    const c=im.coreModel,set=(id,v)=>c.setParameterValueById(id,v);
    for(const key in cur){if(key.startsWith("Param"))set(key,cur[key])}
    set("ParamEyeLOpen",cur.ParamEyeLOpen*(1-bl));set("ParamEyeROpen",cur.ParamEyeROpen*(1-bl));
    set("ParamMouthOpenY",Math.max(cur.ParamMouthOpenY,cur.mo,talk));
-   set("ParamAngleX",sn(t*.6)*4+cur.ax);set("ParamAngleY",sn(t*.45)*2+cur.ay);set("ParamAngleZ",sn(t*.5)*2+cur.az);
-   set("ParamBodyAngleX",sn(t*.5)*2+cur.bx);set("ParamBodyAngleY",sn(t*.4)*1.5+cur.by);set("ParamBodyAngleZ",sn(t*.35)*1.5+cur.bz);
+   set("ParamAngleX",sn(t*.6)*9+cur.ax);set("ParamAngleY",sn(t*.45)*4+cur.ay);set("ParamAngleZ",sn(t*.5)*3.5+cur.az);
+   set("ParamBodyAngleX",sn(t*.5)*5+cur.bx);set("ParamBodyAngleY",sn(t*.4)*3+cur.by);set("ParamBodyAngleZ",sn(t*.35)*3+cur.bz);
    set("ParamBreath",(sn(t*1.6)+1)/2);
   });
   st(LS("gk")||LS("qk")?"":"First time: tap ⚙ to add your keys");
