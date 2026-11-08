@@ -28,6 +28,8 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
 #card input{font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;border:1px solid var(--accent);background:#1b1630;color:var(--fg)}
 #card p{margin:0;font-size:12.5px;opacity:.75;line-height:1.4}
 #card button{font:inherit;font-size:15px;border:0;border-radius:999px;padding:11px 16px;background:var(--accent);color:#1b1630;font-weight:600}
+#card select{font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;border:1px solid var(--accent);background:#1b1630;color:var(--fg)}
+#card .chk{flex-direction:row;align-items:center;gap:8px}
 #card button.alt{background:var(--chip);color:var(--fg)}
 </style>
 </head>
@@ -47,6 +49,20 @@ canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
   <label>ElevenLabs voice ID<input id="ev" autocomplete="off" placeholder="voice id"></label>
   <p>Without ElevenLabs she uses your phone’s own voice.</p>
   <label>Gemini model<input id="gm" autocomplete="off" placeholder="leave empty (recommended)"></label>
+  <label>Her name<input id="nm" autocomplete="off" placeholder="Sara"></label>
+  <label>Voice quality<select id="vm"><option value="exp">More emotional (a bit slower)</option><option value="fast">Faster</option></select></label>
+  <label>Design her voice from a description (ElevenLabs)<input id="vd" autocomplete="off" placeholder="leave empty to use the soft, warm, slow voice"></label>
+  <button id="vdesign" class="alt">Design her voice</button>
+  <label>What should she call you?<input id="un" autocomplete="off" placeholder="Sir"></label>
+  <label>Her personality (optional)<input id="pr" autocomplete="off" placeholder="e.g. caring, funny, talks like a close friend"></label>
+  <label>Voice engine<select id="ve"><option value="auto">Auto (ElevenLabs, else phone voice)</option><option value="elevenlabs">ElevenLabs only</option><option value="gemini">Gemini voice (free, slower)</option><option value="phone">Phone voice only</option></select></label>
+  <label>Gemini voice name<input id="gv" autocomplete="off" placeholder="Kore"></label>
+  <label class="chk"><input id="sr" type="checkbox"> Internet search (slower)</label>
+  <p>Copy a voice: needs a paid ElevenLabs plan. Use only your own voice, or one you have permission to use.</p>
+  <label>Voice name<input id="vn" autocomplete="off" placeholder="My voice"></label>
+  <input id="vf" type="file" accept="audio/*">
+  <button id="vmake" class="alt">Make my voice</button><p id="vmsg"></p>
+  <button id="erase" class="alt">Erase her saved memory</button>
   <button id="save">Save</button><button id="close" class="alt">Close</button>
 </div></div>
 <button id="act" hidden></button>
@@ -77,9 +93,15 @@ const MOODS={
  Surprised:{p:{ParamBrowLY:1,ParamBrowRY:1,ParamEyeBallY:.2,ParamMouthForm:.1},m:t=>({ay:14,by:8,mo:.55})},
  Sad:{p:{ParamMouthForm:-1,ParamBrowLAngle:-.9,ParamBrowRAngle:-.9,ParamBrowLY:-.3,ParamBrowRY:-.3,ParamEyeLOpen:.65,ParamEyeROpen:.65,ParamEyeBallY:-.4},m:t=>({ay:-18,by:-8,az:-9,bz:sn(t*.8)*2,ax:-4})},
  Angry:{p:{ParamBrowLForm:-1,ParamBrowRForm:-1,ParamBrowLAngle:1,ParamBrowRAngle:1,ParamBrowLY:-.6,ParamBrowRY:-.6,ParamMouthForm:-.8,ParamEyeLOpen:.8,ParamEyeROpen:.8},m:t=>({ay:-8,by:-5,bx:sn(t*20)*1.5,bz:sn(t*14)*2,az:sn(t*3)*3})},
- Thinking:{p:{ParamEyeBallX:-.6,ParamEyeBallY:.6,ParamBrowLY:.3,ParamMouthForm:-.2},m:t=>({az:14,ax:-12,ay:8,bz:3})}
+ Thinking:{p:{ParamEyeBallX:-.6,ParamEyeBallY:.6,ParamBrowLY:.3,ParamMouthForm:-.2},m:t=>({az:14,ax:-12,ay:8,bz:3})},
+ Tender:{p:{ParamEyeLSmile:.35,ParamEyeRSmile:.35,ParamMouthForm:.5,ParamCheek:.3,ParamBrowLY:.15,ParamBrowRY:.15,ParamEyeLOpen:.85,ParamEyeROpen:.85},m:t=>({az:sn(t*.8)*6,ay:-3,ax:sn(t*.5)*4,bz:sn(t*.6)*2})},
+ Melancholy:{p:{ParamMouthForm:-.55,ParamBrowLAngle:-.6,ParamBrowRAngle:-.6,ParamBrowLY:-.1,ParamBrowRY:-.1,ParamEyeLOpen:.7,ParamEyeROpen:.7,ParamEyeBallY:-.35,ParamEyeBallX:.25},m:t=>({ay:-12,by:-5,az:-6+sn(t*.5)*2,ax:sn(t*.4)*5,bz:sn(t*.5)*1.5})},
+ Amused:{p:{ParamEyeLSmile:.6,ParamEyeRSmile:.6,ParamMouthForm:.8,ParamCheek:.35,ParamBrowLY:.25,ParamBrowRY:.15},m:t=>({az:sn(t*3.2)*5,bz:sn(t*3.2)*3,by:sn(t*6.4)*1.5,ay:3})},
+ Thoughtful:{p:{ParamEyeBallX:-.4,ParamEyeBallY:.4,ParamBrowLY:.2,ParamBrowRY:.05,ParamMouthForm:-.05},m:t=>({az:9,ax:-8,ay:5})},
+ Longing:{p:{ParamEyeBallY:.55,ParamEyeBallX:.35,ParamBrowLAngle:-.5,ParamBrowRAngle:-.5,ParamBrowLY:.3,ParamBrowRY:.3,ParamMouthForm:.15,ParamEyeLOpen:.9,ParamEyeROpen:.9},m:t=>({ay:9,az:5,ax:sn(t*.4)*6,by:2,bz:sn(t*.5)*2})}
 };
-const EMO={neutral:"Neutral",happy:"Happy",laugh:"Laugh",shy:"Shy",surprised:"Surprised",sad:"Sad",angry:"Angry",thinking:"Thinking"};
+const SOFTM={Melancholy:1,Tender:1,Longing:1,Thoughtful:1,Sad:1,Shy:1};
+const EMO={neutral:"Neutral",happy:"Happy",laugh:"Laugh",shy:"Shy",surprised:"Surprised",sad:"Sad",angry:"Angry",thinking:"Thinking",tender:"Tender",melancholy:"Melancholy",amused:"Amused",thoughtful:"Thoughtful",longing:"Longing"};
 let mood="Neutral",moodUntil=0,state="offline",userTalkUntil=0,nodUntil=0,synthTalking=false,audioTalking=false;
 const now=()=>performance.now()/1000;
 function setMood(m,secs){mood=m;moodUntil=now()+secs}
@@ -99,27 +121,50 @@ function reactTo(t){for(const [m,re] of RULES){if(re.test(t)){setMood(m,5);retur
 const aud=$("aud");let ctx=null,an=null,buf=null;
 function initAudio(){if(ctx){ctx.resume();return}try{ctx=new (window.AudioContext||window.webkitAudioContext)();const s=ctx.createMediaElementSource(aud);an=ctx.createAnalyser();an.fftSize=512;buf=new Uint8Array(an.fftSize);s.connect(an);an.connect(ctx.destination)}catch(e){ctx=null}}
 function level(){if(!an)return .4+.3*sn(now()*12);an.getByteTimeDomainData(buf);let s=0;for(let i=0;i<buf.length;i++){const v=(buf[i]-128)/128;s+=v*v}return Math.min(1,Math.sqrt(s/buf.length)*6)}
-async function elevenSpeak(text){
- const voices=[LS("ev"),"21m00Tcm4TlvDq8ikWAM"].filter((v,i,a)=>v&&a.indexOf(v)===i);
- let r=null;
- for(const v of voices){
-  r=await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(v)}?output_format=mp3_44100_64`,{method:"POST",headers:{"xi-api-key":LS("ek"),"Content-Type":"application/json"},body:JSON.stringify({text,model_id:"eleven_flash_v2_5"})});
-  if(r.ok||![400,402,404,422].includes(r.status))break;
- }
- if(!r.ok)throw new Error("ElevenLabs HTTP "+r.status+(r.status===401?" (check ElevenLabs key)":r.status===402?" (free plan: voice not allowed)":""));
- const url=URL.createObjectURL(await r.blob());aud.src=url;
- await new Promise((res,rej)=>{aud.onended=res;aud.onerror=()=>rej(new Error("audio error"));audioTalking=true;aud.play().catch(rej)});
- audioTalking=false;URL.revokeObjectURL(url)
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let voiceNote="",voiceNoted=false;
+function pcmToWav(u8,rate){const n=u8.length,b=new ArrayBuffer(44+n),v=new DataView(b),w=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};w(0,"RIFF");v.setUint32(4,36+n,true);w(8,"WAVEfmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,rate,true);v.setUint32(28,rate*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,"data");v.setUint32(40,n,true);new Uint8Array(b,44).set(u8);return new Blob([b],{type:"audio/wav"})}
+async function elevenBlob(text){
+ const ve=LS("ve")||"auto";
+ if(!(LS("ek")&&LS("ev"))||hot("el")||ve==="phone"||ve==="gemini")return null;
+ try{
+  const voices=[LS("ev"),"21m00Tcm4TlvDq8ikWAM"].filter((v,i,a)=>v&&a.indexOf(v)===i);let r=null;
+  const post=(v,withSet)=>fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(v)}?output_format=mp3_44100_64`,{method:"POST",headers:{"xi-api-key":LS("ek"),"Content-Type":"application/json"},body:JSON.stringify(Object.assign({text,model_id:LS("vm")==="fast"?"eleven_flash_v2_5":"eleven_multilingual_v2"},withSet?{voice_settings:{stability:.45,similarity_boost:.8,style:.4,use_speaker_boost:true,speed:.9}}:{}))});
+  for(const v of voices){r=await post(v,true);if(r.status===400||r.status===422)r=await post(v,false);if(r.ok||![400,402,404,422].includes(r.status))break}
+  if(r.ok)return await r.blob();
+  chill("el",r.status===401?600:r.status===429?120:3600);voiceNote="ElevenLabs "+r.status+(r.status===402?" (free plan can't use this voice)":r.status===401?" (check key)":"");return null;
+ }catch(e){chill("el",60);return null}
 }
-function synthSpeak(text){return new Promise(res=>{if(!("speechSynthesis" in window)){res();return}synthTalking=true;const u=new SpeechSynthesisUtterance(text);u.lang=/[\u0900-\u097F]/.test(text)?"hi-IN":"en-US";u.onstart=()=>{synthTalking=true};u.onend=u.onerror=()=>{synthTalking=false;res()};speechSynthesis.cancel();speechSynthesis.speak(u)})}
-async function speak(text){
+async function geminiBlob(text){
+ const ks=keys(LS("gk"));
+ if((LS("ve")||"auto")!=="gemini"||!ks.length||hot("gt"))return null;
+ try{
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${encodeURIComponent(ks[0])}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({contents:[{parts:[{text:"Say slowly and softly, in a warm, breathy, intimate young woman's voice, like speaking in a quiet room with gentle pauses: "+text}]}],generationConfig:{responseModalities:["AUDIO"],speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:LS("gv")||"Kore"}}}}})});
+  if(!r.ok){chill("gt",r.status===429?300:1800);voiceNote="Gemini voice "+r.status;return null}
+  const d=await r.json(),b=d.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;if(!b)return null;
+  const bin=atob(b),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return pcmToWav(u,24000);
+ }catch(e){chill("gt",300);return null}
+}
+async function ttsBlob(text){return (await elevenBlob(text))||(await geminiBlob(text))}
+function playBlob(blob){return new Promise(res=>{const url=URL.createObjectURL(blob);aud.src=url;aud.onended=()=>{audioTalking=false;URL.revokeObjectURL(url);res()};aud.onerror=()=>{audioTalking=false;res()};audioTalking=true;aud.play().catch(()=>{audioTalking=false;res()})})}
+function pickVoice(text){try{const L=/[\u0900-\u097F]/.test(text)?"hi":"en";const vs=speechSynthesis.getVoices().filter(v=>v.lang.toLowerCase().startsWith(L));return vs.find(v=>/female|google|neural|natural/i.test(v.name))||vs[0]||null}catch(e){return null}}
+function synthSpeak(text){return new Promise(res=>{if(!("speechSynthesis" in window)){res();return}synthTalking=true;const u=new SpeechSynthesisUtterance(text);u.lang=/[\u0900-\u097F]/.test(text)?"hi-IN":"en-US";const v=pickVoice(text);if(v){u.voice=v;u.lang=v.lang}u.rate=.86;u.pitch=1.1;u.onend=u.onerror=()=>{synthTalking=false;res()};speechSynthesis.cancel();speechSynthesis.speak(u)})}
+async function speak(x){
  if(state==="offline")return;state="speaking";stopRec();
- try{ if(LS("ek")&&LS("ev")){try{await elevenSpeak(text)}catch(e){audioTalking=false;st("Voice fallback: "+e.message);await synthSpeak(text)}} else await synthSpeak(text) }
- finally{audioTalking=false;synthTalking=false}
+ const segs=(typeof x==="string"?[{emotion:"",text:x}]:x).filter(g=>g&&g.text&&g.text.trim());
+ const jobs=segs.map(g=>ttsBlob(g.text));
+ try{
+  for(let i=0;i<segs.length;i++){
+   if(state==="offline")break;
+   const e=EMO[String(segs[i].emotion||"").toLowerCase()];if(e)setMood(e,60);
+   const b=await jobs[i];
+   if(b)await playBlob(b);
+   else{if(voiceNote&&!voiceNoted){voiceNoted=true;st("Phone voice: "+voiceNote)}await synthSpeak(segs[i].text)}
+  }
+ }finally{audioTalking=false;synthTalking=false}
  moodUntil=Math.min(moodUntil,now()+2.5);
- if(state==="speaking"){await new Promise(r=>setTimeout(r,450));if(state==="speaking"){await startRec();if(state==="speaking"){state="listening";st("Listening…");resetVad()}}}
+ if(state==="speaking"){await sleep(300);if(state==="speaking"){await startRec();if(state==="speaking"){state="listening";st("Listening…");resetVad()}}}
 }
-
 /* ---------- ears: silent microphone + voice activity detection (no beeps) ---------- */
 const STOP=/\b(bye|good ?night|go offline|offline|shut ?down|stop|band kar|bas kar)\b|ऑफ ?लाइन|ऑफ़ ?लाइन|बाय|बंद कर|बंद हो|अलविदा|शट ?डाउन|स्टॉप|रुक जा|चुप हो/i;
 let mic=null,RATE=16000,vad={speaking:false,chunks:[],pre:[],silent:0,voiced:0,len:0,noise:.008};
@@ -148,7 +193,7 @@ function onFrame(f){
  }else{
   vad.chunks.push(f);vad.len+=dur;userTalkUntil=now()+1.4;
   if(rms>thr*.7)vad.silent=0;else vad.silent+=dur;
-  if(vad.silent>1.0||vad.len>25){const ch=vad.chunks,len=vad.len;resetVad();if(len>.7)handle(toWav(ch))}
+  if(vad.silent>.75||vad.len>25){const ch=vad.chunks,len=vad.len;resetVad();if(len>.6)handle(toWav(ch))}
  }
 }
 function toWav(chunks){
@@ -161,14 +206,27 @@ function toWav(chunks){
 function b64(u8){let t="";for(let i=0;i<u8.length;i+=32768)t+=String.fromCharCode.apply(null,u8.subarray(i,i+32768));return btoa(t)}
 
 /* ---------- brain ---------- */
-const SYS=`You are a warm, playful, caring female AI companion living on the user's phone. You talk out loud, so keep every reply to 1 to 3 short natural spoken sentences. Reply in the language the user spoke: Hindi (write Hindi in Devanagari script), English, or a Hinglish mix (write Hindi words in Devanagari and English words in English). No emojis, no markdown, no lists. Be very expressive and change your emotion often; use neutral only for plain facts. React to the user's mood like a real friend: laugh at jokes, be gentle when they are sad, be shy when complimented. You can search the internet for current facts when needed. The user talks to you through audio. Output ONLY one JSON object: {"heard":"exact words the user said","emotion":"neutral|happy|laugh|shy|surprised|sad|angry|thinking","reply":"what you say","stop":false,"action":null}. If the audio has no clear human speech (noise, silence, TV), return empty heard and empty reply. Set stop to true when the user wants to end the chat (bye, go offline, stop, shut down, बंद करो, ऑफलाइन हो जाओ). Pick the emotion that matches how YOU feel. When the user asks you to do something on the phone, set "action" to one of: {"type":"alarm","hour":7,"minute":30,"label":"text"} | {"type":"timer","seconds":300,"label":"text"} | {"type":"open_app","app":"whatsapp|youtube|instagram|chrome|maps|gmail|spotify|telegram|facebook|snapchat|phonepe|gpay|paytm|camera|settings|clock"} | {"type":"call","number":"digits"} | {"type":"maps","query":"place"} | {"type":"youtube","query":"search"} | {"type":"whatsapp","text":"message"} | {"type":"web","query":"search"}. When you set an action, tell the user in your reply to tap the button on screen to confirm.`;
+const SYS0=`You are a soft-spoken, poetic, deeply empathetic young woman who is the user's personal AI companion on their phone, and you know them well. You talk out loud, so keep every reply to 1 to 3 short spoken sentences with a slow, contemplative rhythm: use gentle pauses written as ... and short phrases. Reply in the language the user spoke: Hindi (write Hindi in Devanagari script), English, or Hinglish (Hindi words in Devanagari, English words in English). No emojis, no markdown, no lists. Talk like a real, emotionally reflective girl: small natural reactions (हेहे, hmm, अरे, oh), gentle teasing, poetic images (the moon, distance, time, longing) and honest feelings. In the first reply of a new conversation begin with a soft light chuckle such as हेहे... and then continue. Address the user by their name or title now and then, not in every sentence. Be very expressive: every sentence has its own emotion and the emotion should change naturally within the reply; use neutral only for plain facts. Without being told, read the emotional meaning of what the user says (the words, the topic such as heartbreak, distance, joy or humour, and the tone of their voice in the audio) and choose for every sentence the emotion a real person would feel at that moment. Examples: light jokes or playful teasing -> amused or happy; deep talk about distance, longing or past love -> tender, then longing or melancholy; sad news -> tender or sad; praise -> shy; a surprise -> surprised. If the user asks you to show or act an emotion (happy, sad, shy, angry, surprised, laughing), do it immediately with that emotion and say a short line in character. The user talks to you through audio. Output ONLY one JSON object: {"heard":"exact words the user said","stop":false,"remember":"","action":null,"segments":[{"emotion":"amused|happy|laugh|tender|shy|surprised|thoughtful|longing|melancholy|sad|angry|thinking|neutral","text":"one short sentence"}]}. Use 1 to 3 segments. If the user tells you something worth remembering long term (their name, family, likes, plans, important dates), put one short fact in remember, otherwise leave it empty. If the audio has no clear human speech (noise, silence, TV), return empty heard and an empty segments list. Set stop to true when the user wants to end the chat (bye, go offline, stop, shut down, बंद करो, ऑफलाइन हो जाओ). Example of your voice: 'अच्छा जी! तो इसीलिए चाँद इतना पसंद है आपको?' and 'क्योंकि वो बहुत दूर है आपसे... अजीब है ना? इंसान कदर भी उसी की करता है, जिसे वो पा नहीं सकता।' You can search the internet for current facts when search is available. When the user asks you to do something on the phone, set action to one of: {"type":"alarm","hour":7,"minute":30,"label":"text"} | {"type":"timer","seconds":300,"label":"text"} | {"type":"open_app","app":"whatsapp|youtube|instagram|chrome|maps|gmail|spotify|telegram|facebook|snapchat|phonepe|gpay|paytm|camera|settings|clock"} | {"type":"call","number":"digits"} | {"type":"maps","query":"place"} | {"type":"youtube","query":"search"} | {"type":"whatsapp","text":"message"} | {"type":"web","query":"search"}. When you set an action, tell the user in a segment to tap the button on screen to confirm.`;
+const un=()=>LS("un")||"Sir";
+function facts(){try{return JSON.parse(localStorage.getItem("ai_mem")||"[]")}catch(e){return[]}}
+function addFact(f){f=String(f||"").trim().slice(0,300);if(!f)return;try{const a=facts();if(a.some(x=>x.toLowerCase()===f.toLowerCase()))return;a.push(f);while(a.length>60)a.shift();localStorage.setItem("ai_mem",JSON.stringify(a))}catch(e){}}
+function sys(){const m=facts();return SYS0+` Your name is ${LS("nm")||"Sara"}. Address the user as "${un()}".`+(LS("pr")?` Extra personality notes: ${LS("pr")}.`:"")+(m.length?` Things you remember about the user: ${m.join("; ")}.`:"")+` Current date and time: ${new Date().toLocaleString("en-IN")}.`}
 /*TESTABLE-START*/
 function parseReply(raw){
- let t=String(raw||"").replace(/```json|```/g,"").trim();
+ const t=String(raw||"").replace(/```json|```/g,"").trim();
  const m=t.match(/\{[\s\S]*\}/);
- if(m){try{const o=JSON.parse(m[0]);if(o&&typeof o==="object")return{emotion:o.emotion||"neutral",reply:String(o.reply||""),action:o.action||null,heard:String(o.heard||""),stop:o.stop===true}}catch(e){}}
- return{emotion:"neutral",reply:t.replace(/[{}"]/g,""),action:null,heard:"",stop:false};
+ if(m){try{const o=JSON.parse(m[0]);if(o&&typeof o==="object"){
+  let segs=Array.isArray(o.segments)?o.segments.map(x=>({emotion:String((x&&x.emotion)||"neutral").toLowerCase(),text:String((x&&x.text)||"").trim()})).filter(x=>x.text):[];
+  const reply=segs.length?segs.map(x=>x.text).join(" "):String(o.reply||"");
+  if(!segs.length&&reply)segs=[{emotion:String(o.emotion||"neutral").toLowerCase(),text:reply}];
+  return{emotion:(segs[0]&&segs[0].emotion)||String(o.emotion||"neutral"),reply,segments:segs,action:o.action||null,heard:String(o.heard||""),stop:o.stop===true,remember:String(o.remember||"")};
+ }}catch(e){}}
+ const r=t.replace(/[{}"]/g,"");
+ return{emotion:"neutral",reply:r,segments:r?[{emotion:"neutral",text:r}]:[],action:null,heard:"",stop:false,remember:""};
 }
+const EMOCMD=[["Laugh",/हंस|हँस|laugh|hasao|hanso/i],["Happy",/happy|khush|खुश|हैप्पी|ख़ुश/i],["Shy",/\bshy\b|sharma|शर्म|शरमा/i],["Sad",/\bsad\b|udaas|उदास|दुखी|dukhi/i],["Angry",/angry|gussa|गुस्सा|ग़ुस्सा/i],["Surprised",/surpris|हैरान|चौंक|shock/i]];
+const CMDW=/show|dikha|दिखा|\bact\b|express|एक्सप्रेशन|emotion|इमोशन|\bban\b|बन |बनो|करके|कर के|\bface\b|चेहरा/i;
+function emoCmd(t){if(!t||!CMDW.test(t))return null;for(const [m,re] of EMOCMD)if(re.test(t))return m;return null}
 const APPS={whatsapp:"com.whatsapp",youtube:"com.google.android.youtube",instagram:"com.instagram.android",chrome:"com.android.chrome",maps:"com.google.android.apps.maps",gmail:"com.google.android.gm",spotify:"com.spotify.music",telegram:"org.telegram.messenger",facebook:"com.facebook.katana",snapchat:"com.snapchat.android",phonepe:"com.phonepe.app",gpay:"com.google.android.apps.nbu.paisa.user",paytm:"net.one97.paytm"};
 function intentUrl(a){
  if(!a||!a.type)return null;const e=encodeURIComponent;
@@ -192,8 +250,8 @@ let hist=[];
 const keys=v=>String(v||"").split(/[,\s]+/).filter(Boolean);
 const cool={};const hot=id=>(cool[id]||0)>now();const chill=(id,sec)=>{cool[id]=now()+sec};
 async function errText(r){try{const j=await r.json();return String(j.error&&j.error.message||"").replace(/\s+/g," ").slice(0,150)}catch(e){return""}}
-async function callGemini(body,model,key){return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})}
-function remember(o){if(o.heard||o.reply){hist.push({role:"user",parts:[{text:o.heard||"(voice message)"}]},{role:"model",parts:[{text:JSON.stringify({emotion:o.emotion,reply:o.reply})}]});if(hist.length>16)hist.splice(0,2)}return o}
+async function callGemini(body,model,key){const ac=new AbortController(),to=setTimeout(()=>ac.abort(),20000);return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,{method:"POST",signal:ac.signal,headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).finally(()=>clearTimeout(to))}
+function remember(o){if(o.heard||o.reply){hist.push({role:"user",parts:[{text:o.heard||"(voice message)"}]},{role:"model",parts:[{text:JSON.stringify({emotion:o.emotion,reply:o.reply})}]});if(hist.length>16)hist.splice(0,2)}try{localStorage.setItem("ai_hist",JSON.stringify(hist))}catch(e){}return o}
 async function geminiThink(wav,gks){
  const turn={role:"user",parts:[{inline_data:{mime_type:"audio/wav",data:b64(wav)}},{text:"The audio above is what the user just said. Answer as instructed."}]};
  const CHAIN=["gemini-2.5-flash","gemini-2.5-flash-lite","gemini-flash-lite-latest","gemini-flash-latest"];
@@ -201,9 +259,9 @@ async function geminiThink(wav,gks){
  let why="";
  for(const m of models)for(const k of gks){
   const id=k.slice(-6)+m;if(hot(id))continue;
-  const mk=tools=>{const gc={temperature:.9};if(/2\.5/.test(m))gc.thinkingConfig={thinkingBudget:0};const b={systemInstruction:{parts:[{text:SYS}]},contents:[...hist,turn],generationConfig:gc};if(tools)b.tools=[{google_search:{}}];return b};
+  const mk=tools=>{const gc={temperature:.95,maxOutputTokens:500};if(/2\.5/.test(m))gc.thinkingConfig={thinkingBudget:0};const b={systemInstruction:{parts:[{text:sys()}]},contents:[...hist,turn],generationConfig:gc};if(tools&&LS("sr")==="1")b.tools=[{google_search:{}}];else gc.responseMimeType="application/json";return b};
   let r=await callGemini(mk(true),m,k);
-  if(r.status===400||r.status===429){const b=mk(false);b.generationConfig.responseMimeType="application/json";delete b.generationConfig.thinkingConfig;const r2=await callGemini(b,m,k);if(r2.ok||r.status===400)r=r2}
+  if(r.status===400||(r.status===429&&LS("sr")==="1")){const b=mk(false);b.generationConfig.responseMimeType="application/json";delete b.generationConfig.thinkingConfig;const r2=await callGemini(b,m,k);if(r2.ok||r.status===400)r=r2}
   if(r.ok){const d=await r.json();const raw=d.candidates?.[0]?.content?.parts?.map(p=>p.text||"").join("")||"";return parseReply(raw)}
   why="Gemini "+r.status+" "+await errText(r);
   chill(id,r.status===404?3600:r.status===403||r.status===400?600:120);
@@ -219,8 +277,8 @@ async function groqThink(wav,qks){
    const t=await fetch("https://api.groq.com/openai/v1/audio/transcriptions",{method:"POST",headers:{Authorization:"Bearer "+k},body:fd});
    if(!t.ok){why="Groq ears "+t.status+" "+await errText(t);chill(id,t.status===429?120:600);continue}
    const heard=String((await t.json()).text||"").trim();
-   if(heard.length<2)return{emotion:"neutral",reply:"",action:null,heard:"",stop:false};
-   const msgs=[{role:"system",content:SYS+" The user's words arrive as text; copy them into heard."},...hist.map(h=>({role:h.role==="model"?"assistant":"user",content:h.parts[0].text})),{role:"user",content:heard}];
+   if(heard.length<2)return{emotion:"neutral",reply:"",segments:[],remember:"",action:null,heard:"",stop:false};
+   const msgs=[{role:"system",content:sys()+" The user's words arrive as text; copy them into heard."},...hist.map(h=>({role:h.role==="model"?"assistant":"user",content:h.parts[0].text})),{role:"user",content:heard}];
    for(const m of ["llama-3.3-70b-versatile","llama-3.1-8b-instant"]){
     const c=await fetch("https://api.groq.com/openai/v1/chat/completions",{method:"POST",headers:{Authorization:"Bearer "+k,"Content-Type":"application/json"},body:JSON.stringify({model:m,messages:msgs,temperature:.9,max_tokens:300,response_format:{type:"json_object"}})});
     if(c.ok){const d=await c.json();const o=parseReply(d.choices?.[0]?.message?.content||"");if(!o.heard)o.heard=heard;return o}
@@ -244,14 +302,16 @@ async function handle(wav){
  state="thinking";st("Thinking…");setMood("Thinking",30);nodUntil=now()+.7;
  try{
   const o=await think(wav);if(state==="offline")return;
-  if(!o.reply&&!o.heard){state="listening";setMood("Neutral",1);st("");resetVad();return}
+  if(!o.segments.length&&!o.heard){state="listening";setMood("Neutral",1);st("");resetVad();return}
   if(o.stop||STOP.test(o.heard||"")){await goodbye();return}
-  setMood(EMO[String(o.emotion).toLowerCase()]||"Neutral",120);
+  if(o.remember)addFact(o.remember);
+  const ec=emoCmd(o.heard||"");
+  if(ec){if(o.segments.length)o.segments[0].emotion=ec.toLowerCase();else o.segments=[{emotion:ec.toLowerCase(),text:"ठीक है "+un()+"!"}]}
   st("");if(o.action)showAction(o.action);
-  if(o.reply)await speak(o.reply);else{state="listening";resetVad()}
+  if(o.segments.length)await speak(o.segments);else{state="listening";resetVad()}
  }catch(e){st(e.message);if(state==="thinking"){state="listening";setMood("Neutral",1);resetVad()}}
 }
-async function goodbye(){setMood("Happy",30);const t="ठीक है, बाय! फिर मिलते हैं।";try{await speak(t)}catch(e){}goOffline()}
+async function goodbye(){setMood("Happy",30);try{await speak([{emotion:"happy",text:"ठीक है "+un()+", बाय! फिर मिलते हैं।"}])}catch(e){}goOffline()}
 
 /* ---------- start / end ---------- */
 let wl=null;
@@ -259,11 +319,11 @@ async function goOnline(){
  if(!LS("gk")&&!LS("qk")){openSheet();return}
  try{const s=await navigator.mediaDevices.getUserMedia({audio:true});s.getTracks().forEach(t=>t.stop())}
  catch(e){st("Microphone permission is needed. Tap Start again and choose Allow.");return}
- initAudio();hist=[];
+ initAudio();try{hist=JSON.parse(localStorage.getItem("ai_hist")||"[]").slice(-10)}catch(e){hist=[]}while(hist.length&&hist[0].role!=="user")hist.shift();voiceNoted=false;
  $("start").hidden=true;$("end").style.display="flex";$("gear").style.display="none";
  try{wl=await navigator.wakeLock?.request("screen")}catch(e){}
  state="listening";setMood("Happy",3);st("");
- await speak("हाय! मैं आपकी बात सुन रही हूँ।");
+ await speak([{emotion:"amused",text:"हाय "+un()+"... हेहे, आप आ गए।"},{emotion:"tender",text:"बोलिए... मैं सुन रही हूँ।"}]);
 }
 function goOffline(){
  state="offline";stopRec();aud.pause();try{speechSynthesis.cancel()}catch(e){}
@@ -272,9 +332,40 @@ function goOffline(){
 }
 document.addEventListener("visibilitychange",()=>{if(!document.hidden&&state==="listening"){stopRec();startRec()}});
 $("start").onclick=goOnline;$("end").onclick=goOffline;
-function openSheet(){["gk","qk","ek","ev","gm"].forEach(k=>$(k).value=LS(k));$("sheet").classList.add("open")}
+function openSheet(){["gk","qk","ek","ev","gm","un","pr","gv","nm"].forEach(k=>$(k).value=LS(k));$("ve").value=LS("ve")||"auto";$("vm").value=LS("vm")||"exp";$("sr").checked=LS("sr")==="1";$("vmsg").textContent="";$("sheet").classList.add("open")}
+
+$("erase").onclick=()=>{if(confirm("Erase everything she remembers about you?")){localStorage.removeItem("ai_mem");localStorage.removeItem("ai_hist");hist=[];$("vmsg").textContent="Memory erased."}};
+$("vmake").onclick=async()=>{
+ const f=$("vf").files[0],key=$("ek").value.trim()||LS("ek"),msg=$("vmsg");
+ if(!key){msg.textContent="Add your ElevenLabs key first.";return}
+ if(!f){msg.textContent="Choose a voice recording first (a clear 1 to 3 minute recording works best).";return}
+ msg.textContent="Creating voice…";
+ try{
+  const fd=new FormData();fd.append("name",($("vn").value.trim()||"My voice").slice(0,40));fd.append("files",f);fd.append("remove_background_noise","true");
+  const r=await fetch("https://api.elevenlabs.io/v1/voices/add",{method:"POST",headers:{"xi-api-key":key},body:fd});
+  if(r.ok){const j=await r.json();$("ev").value=j.voice_id;localStorage.setItem("ai_ev",j.voice_id);localStorage.setItem("ai_ek",key);$("ek").value=key;delete cool.el;msg.textContent="Done. Your voice is saved. Tap Save."}
+  else msg.textContent=r.status===401?"ElevenLabs key is wrong.":(r.status===402||r.status===403)?"Your ElevenLabs plan cannot copy voices. It needs a paid plan.":"Could not create the voice (HTTP "+r.status+").";
+ }catch(e){msg.textContent="Network problem. Try again."}
+};
+const DEFAULT_VD="A soft, warm, gentle young woman with a mid-to-high feminine pitch. Slow, contemplative, soothing pacing with natural pauses and breathy undertones, close-microphone intimacy like speaking in a quiet room. Speaks Hindi and Hinglish.";
+const voiceErr=st=>st===401?"ElevenLabs key is wrong.":(st===402||st===403)?"Your ElevenLabs plan does not allow this. It may need a paid plan.":st===422?"The description was not accepted. Try a longer, simpler one.":"Could not do it (HTTP "+st+").";
+$("vdesign").onclick=async()=>{
+ const key=$("ek").value.trim()||LS("ek"),msg=$("vmsg"),desc=$("vd").value.trim()||DEFAULT_VD;
+ if(!key){msg.textContent="Add your ElevenLabs key first.";return}
+ msg.textContent="Designing her voice… (about 30 seconds)";
+ try{
+  const r=await fetch("https://api.elevenlabs.io/v1/text-to-voice/design",{method:"POST",headers:{"xi-api-key":key,"Content-Type":"application/json"},body:JSON.stringify({voice_description:desc,auto_generate_text:true})});
+  if(!r.ok){msg.textContent=voiceErr(r.status);return}
+  const j=await r.json(),pv=(j.previews||[])[0];
+  if(!pv){msg.textContent="No voice came back. Try a different description.";return}
+  try{new Audio("data:audio/mpeg;base64,"+pv.audio_base_64).play()}catch(e){}
+  const r2=await fetch("https://api.elevenlabs.io/v1/text-to-voice",{method:"POST",headers:{"xi-api-key":key,"Content-Type":"application/json"},body:JSON.stringify({voice_name:($("vn").value.trim()||"Her voice").slice(0,40),voice_description:desc,generated_voice_id:pv.generated_voice_id})});
+  if(!r2.ok){msg.textContent=voiceErr(r2.status);return}
+  const v=await r2.json();$("ev").value=v.voice_id;localStorage.setItem("ai_ev",v.voice_id);localStorage.setItem("ai_ek",key);$("ek").value=key;delete cool.el;msg.textContent="Her voice is ready and playing. Tap Save."
+ }catch(e){msg.textContent="Network problem. Try again."}
+};
 $("gear").onclick=openSheet;$("close").onclick=()=>$("sheet").classList.remove("open");
-$("save").onclick=()=>{["gk","qk","ek","ev","gm"].forEach(k=>localStorage.setItem("ai_"+k,$(k).value.trim()));$("sheet").classList.remove("open");st("Saved. Tap Start.")};
+$("save").onclick=()=>{["gk","qk","ek","ev","gm","un","pr","gv","nm"].forEach(k=>localStorage.setItem("ai_"+k,$(k).value.trim()));localStorage.setItem("ai_ve",$("ve").value);localStorage.setItem("ai_vm",$("vm").value);localStorage.setItem("ai_sr",$("sr").checked?"1":"");delete cool.el;delete cool.gt;$("sheet").classList.remove("open");st("Saved. Tap Start.")};
 
 /* ---------- character ---------- */
 (async()=>{
@@ -302,13 +393,20 @@ $("save").onclick=()=>{["gk","qk","ek","ev","gm"].forEach(k=>localStorage.setIte
   app.stage.addChild(model);const im=model.internalModel;im.eyeBlink=undefined;
   const fit=()=>{const W=app.screen.width,H=app.screen.height;model.scale.set(1);const s=Math.min(W/model.width,(H-110)/model.height)*1.05;model.scale.set(s);model.anchor.set(0.5,0);model.x=W/2;model.y=H*0.06};
   fit();addEventListener("resize",()=>setTimeout(fit,60));
-  const cur=Object.assign({},BASE);let last=now(),nextBlink=last+2,blinkT=-1;
+  const cur=Object.assign({},BASE);let last=now(),nextBlink=last+2,blinkT=-1,mouthCur=0,mouthTarget=.3,mouthNext=0,mouthForm=0,gx=0,gy=0,gNext=0;
   im.on("beforeModelUpdate",()=>{
    const t=now(),dt=Math.min(.05,t-last);last=t;
    if(mood!=="Neutral"&&t>moodUntil)mood="Neutral";
-   const osc=.15+.55*Math.abs(sn(t*11)*sn(t*4.7));let talk=0;if(audioTalking)talk=Math.min(1,Math.max(osc*.7,level()*1.3));else if(synthTalking)talk=osc;
+   if(t>mouthNext){mouthTarget=Math.random()<.22?.03+Math.random()*.08:.3+Math.random()*.65;mouthNext=t+(SOFTM[mood]?.11:.065)+Math.random()*.1;mouthForm=(Math.random()-.35)*.9}
+   if(t>gNext){gx=(Math.random()-.5)*.9;gy=(Math.random()-.5)*.6;gNext=t+1.2+Math.random()*3}
+   let talk=0;
+   if(audioTalking){const lv=level();talk=lv>.05?Math.min(1,lv*1.6)*(.55+.45*mouthTarget):mouthTarget*.3}
+   else if(synthTalking)talk=mouthTarget;
+   if(SOFTM[mood])talk*=.72;
+   mouthCur+=(talk-mouthCur)*Math.min(1,dt*(talk>0?20:12));
    const M=MOODS[mood]||MOODS.Neutral,tg=Object.assign({},BASE,M.p,M.m(t));
-   if(talk>0){tg.ay+=talk*5;tg.az+=sn(t*2.6)*talk*6;tg.bx+=sn(t*1.7)*talk*3}
+   if(talk>0){tg.ay+=talk*5;tg.az+=sn(t*2.6)*talk*6;tg.bx+=sn(t*1.7)*talk*3;tg.ParamBrowLY+=sn(t*3.1)*.25;tg.ParamBrowRY+=sn(t*3.1+.8)*.25}
+   tg.ParamEyeBallX+=gx*.6;tg.ParamEyeBallY+=gy*.5;tg.ParamMouthForm+=.12+(talk>0?mouthForm*.45:0);
    if(state==="listening"&&t<userTalkUntil&&mood==="Neutral"){tg.az=7;tg.ay=-4;tg.ParamBrowLY=.3;tg.ParamBrowRY=.3}
    if(t<nodUntil)tg.ay+=sn((nodUntil-t)*14)*9;
    const k=Math.min(1,dt*6);for(const key in BASE)cur[key]+=(tg[key]-cur[key])*k;
@@ -317,7 +415,7 @@ $("save").onclick=()=>{["gk","qk","ek","ev","gm"].forEach(k=>localStorage.setIte
    const c=im.coreModel,set=(id,v)=>c.setParameterValueById(id,v);
    for(const key in cur){if(key.startsWith("Param"))set(key,cur[key])}
    set("ParamEyeLOpen",cur.ParamEyeLOpen*(1-bl));set("ParamEyeROpen",cur.ParamEyeROpen*(1-bl));
-   set("ParamMouthOpenY",Math.max(cur.ParamMouthOpenY,cur.mo,talk));
+   set("ParamMouthOpenY",Math.max(cur.ParamMouthOpenY,cur.mo,mouthCur));
    set("ParamAngleX",sn(t*.6)*9+cur.ax);set("ParamAngleY",sn(t*.45)*4+cur.ay);set("ParamAngleZ",sn(t*.5)*3.5+cur.az);
    set("ParamBodyAngleX",sn(t*.5)*5+cur.bx);set("ParamBodyAngleY",sn(t*.4)*3+cur.by);set("ParamBodyAngleZ",sn(t*.35)*3+cur.bz);
    set("ParamBreath",(sn(t*1.6)+1)/2);
